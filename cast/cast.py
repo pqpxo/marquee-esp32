@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# version 4
 """Marquee — a "now playing" marquee for Google Nest Hubs.
 The whole app in one container: front end + back end.
 
@@ -43,7 +44,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "2.2.1"
+VERSION = "2.2.1-esp32-enhanced.4"
 HUB_IP = os.environ.get("HUB_IP", "")
 PAGE_URL = os.environ.get("PAGE_URL", "")
 PLEX = os.environ.get("PLEX_HOST", "").rstrip("/")
@@ -158,12 +159,42 @@ OUTPUT = os.path.join(REPO, "output")
 JSON_PATH = os.path.join(OUTPUT, "now-playing.json")
 DATA_DIR = os.environ.get("DATA_DIR", OUTPUT)
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+CUSTOM_BACKDROP_PATH = os.path.join(DATA_DIR, "custom-backdrop.img")
+MAX_CUSTOM_BACKDROP_BYTES = 15 * 1024 * 1024
+
+
+def image_mime(data):
+    """Supported custom-backdrop type from magic bytes; None for anything else."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def custom_backdrop_info():
+    """(path, MIME type, cache version) for the persisted custom image."""
+    try:
+        with open(CUSTOM_BACKDROP_PATH, "rb") as f:
+            mime = image_mime(f.read(16))
+        if not mime:
+            return None
+        stat = os.stat(CUSTOM_BACKDROP_PATH)
+        return CUSTOM_BACKDROP_PATH, mime, str(stat.st_mtime_ns)
+    except (OSError, ValueError):
+        return None
 
 THEMES = ("amber", "ice", "crimson", "emerald",
           "campaign", "concrete", "trophy", "bsides")
 TEMPLATES = ("spotlight", "split", "hero", "lowerthird", "bigclock", "street",
              "fanart")
-TITLE_FONTS = ("system", "bebas", "oswald", "playfair", "cinzel", "grotesk")
+TITLE_FONTS = (
+    "system", "bebas", "oswald", "playfair", "cinzel", "grotesk",
+    "roboto", "montserrat", "lato", "raleway", "anton", "orbitron",
+    "righteous", "merriweather", "libre", "bangers",
+)
 ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 DEFAULT_SETTINGS = {
@@ -179,13 +210,25 @@ DEFAULT_SETTINGS = {
     "showMediaInfo": True, "showContentRating": True, "showRuntime": True,
     "showProgress": True, "showClock": True,
     "backdrop": True, "logo": True,
+    "displayWidth": 800, "displayHeight": 480,
+    "showDeviceLocation": True,
+    "streetRainAnimation": True,
+    "customBackdropEnabled": False,
+    "customBackdropFit": "cover",
+    "customBackdropZoom": 100,
+    "customBackdropX": 50,
+    "customBackdropY": 50,
+    "customBackdropOpacity": 35,
+    "customBackdropBlur": 0,
+    "customBackdropBrightness": 100,
     "plexUsers": "", "plexDevices": "",
     "blockTags": "",
     "rotateSeconds": 30,
     "showWeather": False, "weatherZip": "", "weatherUnits": "f",
     "weatherFX": True, "weatherIntensity": 2,
     "fanartKey": "", "fanartType": "background", "fanartRotateSeconds": 600,
-    "blockLayout": {},       # {template: {block: {x,y,width,scale,align,font,color}}}
+    # {template: {block: {x,y,width,scale,align,font,color,panelBackground,panelBorder}}}
+    "blockLayout": {},
     "presets": [],           # user-saved looks: {name, template, blockLayout, blockVisibility, metaOpts}
     "blockVisibility": {},  # {template: {block: bool}}, sparse — only overrides
     "mediaBackend": "",       # "" = inherit MEDIA_BACKEND env (plex when unset)
@@ -207,25 +250,33 @@ def served_settings(settings=None):
     for k in SECRET_SETTINGS:
         s[k + "Set"] = bool(s.pop(k, ""))
     s["envBackend"] = ENV_BACKEND
+    custom = custom_backdrop_info()
+    s["customBackdropAvailable"] = bool(custom)
+    s["customBackdropVersion"] = custom[2] if custom else ""
     return s
 
-EDITABLE_BLOCKS = ("clock", "weather", "identity", "meta", "plot", "ratings",
-                   "progress", "poster", "stinger")
-# Blocks a user can freely add to or remove from a template. Stinger is
-# excluded: it's a content-driven badge (only appears when TMDB has a
-# credits-scene tag), not something toggling it on would ever show anything.
-TOGGLEABLE_BLOCKS = ("clock", "weather", "identity", "meta", "plot",
-                     "ratings", "progress", "poster", "backdrop")
+EDITABLE_BLOCKS = ("clock", "weather", "category", "identity", "meta", "plot", "ratings",
+                   "progress", "poster", "streetframe", "nowplaying",
+                   "viewer", "device", "stream",
+                   "activity", "tracks", "stinger")
+# Blocks a user can freely add to or remove from a template. The credits badge
+# remains content-driven, but its presence can now be disabled like any other
+# Design block.
+TOGGLEABLE_BLOCKS = ("clock", "weather", "category", "identity", "meta", "plot",
+                     "ratings", "progress", "poster", "streetframe", "nowplaying",
+                     "backdrop", "viewer",
+                     "device", "stream", "activity", "tracks", "stinger")
 # Each template's shipped block set, mirrored from the display:none rules in
 # output/index.html. A user's blockVisibility only needs to store where they
 # differ from this — the default itself never touches settings.json.
 TEMPLATE_DEFAULT_BLOCKS = {
-    "spotlight": ("backdrop", "clock", "identity", "meta", "plot", "ratings", "progress", "poster"),
-    "split": ("backdrop", "clock", "identity", "meta", "plot", "ratings", "progress", "poster"),
-    "hero": ("backdrop", "clock", "identity", "meta", "ratings", "progress"),
-    "lowerthird": ("backdrop", "clock", "identity", "meta", "ratings", "progress"),
+    "spotlight": ("backdrop", "clock", "category", "identity", "meta", "plot", "ratings", "progress", "poster", "stinger"),
+    "split": ("backdrop", "clock", "category", "identity", "meta", "plot", "ratings", "progress", "poster", "stinger"),
+    "hero": ("backdrop", "clock", "category", "identity", "meta", "ratings", "progress", "stinger"),
+    "lowerthird": ("backdrop", "clock", "category", "identity", "meta", "ratings", "progress", "stinger"),
     "bigclock": ("backdrop", "clock", "identity", "progress"),
-    "street": ("clock", "identity", "meta", "plot", "ratings", "progress", "poster"),
+    "street": ("clock", "category", "identity", "meta", "plot", "ratings", "progress",
+               "streetframe", "poster", "nowplaying", "stinger"),
     # Fanart ships bare on purpose: the rotating art is the whole card until
     # the user adds blocks. Its art layer replaces backdrop (like street).
     "fanart": (),
@@ -610,7 +661,272 @@ def emby_resolution(width, height=None):
     return f"{w}px" if w else None
 
 
-def parse_emby_session(session, extras):
+def bool_value(value):
+    """Boolean-ish media API values without treating the string "false" as true."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on", "lan", "local"):
+        return True
+    if text in ("0", "false", "no", "off", "wan", "remote"):
+        return False
+    return None
+
+
+def int_value(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def bitrate_kbps(value, bits_per_second=False):
+    """Normalise Plex kbps and Emby/Jellyfin bits-per-second values to kbps."""
+    number = int_value(value)
+    if number is None or number <= 0:
+        return None
+    return round(number / 1000) if bits_per_second else number
+
+
+def channel_label(channels, layout=None):
+    """Compact speaker-layout label shared by Plex, Emby and Jellyfin."""
+    if layout:
+        text = str(layout).strip()
+        if text:
+            return text.upper().replace("CH", " ch")
+    number = int_value(channels)
+    return {1: "Mono", 2: "2.0", 6: "5.1", 8: "7.1"}.get(
+        number, f"{number} ch" if number else None)
+
+
+def dynamic_range_label(*values):
+    """Return a friendly HDR label, ignoring ordinary SDR markers."""
+    text = " ".join(str(v) for v in values if v).lower()
+    if not text or text.strip() == "sdr":
+        return None
+    if "dovi" in text or "dolby vision" in text:
+        return "Dolby Vision"
+    if "hdr10+" in text or "hdr10plus" in text:
+        return "HDR10+"
+    if "hdr10" in text:
+        return "HDR10"
+    if "hlg" in text:
+        return "HLG"
+    if "hdr" in text:
+        return "HDR"
+    return None
+
+
+def playback_decision(*values):
+    """Collapse backend-specific playback methods into three user labels."""
+    methods = [re.sub(r"[^a-z]", "", str(v).lower()) for v in values if v]
+    if any("transcod" in method for method in methods):
+        return "Transcoding"
+    if any(method in ("copy", "directstream", "remux")
+           or "directstream" in method for method in methods):
+        return "Direct Stream"
+    if any("directplay" in method for method in methods):
+        return "Direct Play"
+    return None
+
+
+def track_payload(language=None, codec=None, channels=None, layout=None,
+                  title=None, display=None, spatial=None):
+    """Common audio/subtitle shape used by every media backend."""
+    spatial_text = " ".join(str(v) for v in (title, display, spatial) if v)
+    return {
+        "language": language or None,
+        "codec": str(codec).upper() if codec else None,
+        "channels": channel_label(channels, layout),
+        "title": title or None,
+        "display": display or None,
+        "spatial": "Atmos" if "atmos" in spatial_text.lower() else None,
+    }
+
+
+def plex_stream(video, stream_type, default_ok=True):
+    streams = [s for s in video.findall(".//Stream")
+               if s.get("streamType") == str(stream_type)]
+    selected = next((s for s in streams if bool_value(s.get("selected")) is True), None)
+    if selected is not None:
+        return selected
+    if not default_ok:
+        return None
+    return next((s for s in streams if bool_value(s.get("default")) is True),
+                streams[0] if streams else None)
+
+
+def plex_track(stream):
+    if stream is None:
+        return None
+    return track_payload(
+        language=stream.get("language") or stream.get("languageCode"),
+        codec=stream.get("codec"), channels=stream.get("channels"),
+        layout=stream.get("audioChannelLayout"), title=stream.get("title"),
+        display=stream.get("extendedDisplayTitle") or stream.get("displayTitle"),
+        spatial=stream.get("profile"))
+
+
+def plex_session_payload(video, position=None):
+    """Viewer, device, stream and track data from one Plex Video session."""
+    user, device = session_names(video)
+    player = video.find("Player")
+    session = video.find("Session")
+    media = video.find("Media")
+    part = media.find("Part") if media is not None else video.find(".//Part")
+    transcode = video.find("TranscodeSession")
+    video_track = plex_stream(video, 1)
+    audio_track = plex_stream(video, 2)
+    subtitle_track = plex_stream(video, 3, default_ok=False)
+
+    local = bool_value(player.get("local")) if player is not None else None
+    if local is None and session is not None:
+        local = bool_value(session.get("location"))
+    pos, count = position or (1, 1)
+    session_info = {
+        "user": user or None,
+        "device": device or None,
+        "client": ((player.get("product") or player.get("platform"))
+                   if player is not None else None),
+        "platform": ((player.get("platform") or player.get("device"))
+                     if player is not None else None),
+        "local": local,
+        "position": pos,
+        "count": count,
+    }
+
+    decisions = []
+    for node in (transcode, media, part):
+        if node is not None:
+            decisions.extend(node.get(k) for k in
+                             ("decision", "videoDecision", "audioDecision",
+                              "subtitleDecision"))
+    decision = playback_decision(*decisions)
+    if not decision and media is not None:
+        decision = "Direct Play"
+    source_resolution = None
+    if media is not None:
+        source_resolution = (pretty_resolution(media.get("videoResolution"))
+                             or emby_resolution(media.get("width"), media.get("height")))
+    output_resolution = None
+    if transcode is not None:
+        output_resolution = (pretty_resolution(transcode.get("videoResolution"))
+                             or emby_resolution(transcode.get("width"),
+                                                transcode.get("height")))
+    hdr = dynamic_range_label(
+        media.get("videoDynamicRange") if media is not None else None,
+        video_track.get("videoDynamicRange") if video_track is not None else None,
+        video_track.get("HDRFormat") if video_track is not None else None,
+        "dovi" if video_track is not None and any(
+            bool_value(video_track.get(k)) is True for k in
+            ("DOVIPresent", "DOVIBLPresent", "DOVIELPresent")) else None,
+        video_track.get("displayTitle") if video_track is not None else None)
+    stream_info = {
+        "decision": decision,
+        "sourceResolution": source_resolution,
+        "outputResolution": output_resolution,
+        "videoCodec": ((media.get("videoCodec") if media is not None else None)
+                       or (video_track.get("codec") if video_track is not None else None)),
+        "audioCodec": ((media.get("audioCodec") if media is not None else None)
+                       or (audio_track.get("codec") if audio_track is not None else None)),
+        "dynamicRange": hdr,
+        "bitrateKbps": bitrate_kbps(media.get("bitrate")) if media is not None else None,
+        "bandwidthKbps": bitrate_kbps(session.get("bandwidth"))
+                         if session is not None else None,
+        "hardware": bool(transcode is not None and any(
+            bool_value(transcode.get(k)) is True for k in
+            ("transcodeHwRequested", "transcodeHwFullPipeline"))),
+    }
+    tracks = {"audio": plex_track(audio_track),
+              "subtitle": plex_track(subtitle_track)}
+    return session_info, stream_info, tracks
+
+
+def emby_stream(item, kind, index=None, default_ok=True):
+    streams = [s for s in (item.get("MediaStreams") or []) if s.get("Type") == kind]
+    if index is not None:
+        wanted = int_value(index)
+        match = next((s for s in streams if int_value(s.get("Index")) == wanted), None)
+        if match is not None:
+            return match
+    if not default_ok:
+        return None
+    return next((s for s in streams if s.get("IsDefault") is True),
+                streams[0] if streams else None)
+
+
+def emby_track(stream):
+    if stream is None:
+        return None
+    return track_payload(
+        language=stream.get("Language"), codec=stream.get("Codec"),
+        channels=stream.get("Channels"), layout=stream.get("ChannelLayout"),
+        title=stream.get("Title"),
+        display=stream.get("DisplayTitle") or stream.get("ExtendedVideoType"),
+        spatial=stream.get("Profile"))
+
+
+def emby_session_payload(session, position=None):
+    """Viewer, device, stream and track data from Emby/Jellyfin /Sessions."""
+    item = session.get("NowPlayingItem") or {}
+    play = session.get("PlayState") or {}
+    transcode = session.get("TranscodingInfo") or {}
+    video = emby_stream(item, "Video")
+    audio = emby_stream(item, "Audio", play.get("AudioStreamIndex"))
+    subtitle_index = play.get("SubtitleStreamIndex")
+    subtitle = (emby_stream(item, "Subtitle", subtitle_index, default_ok=False)
+                if int_value(subtitle_index) is not None
+                and int_value(subtitle_index) >= 0 else None)
+    pos, count = position or (1, 1)
+    user, device = emby_session_names(session)
+    session_info = {
+        "user": user or None,
+        "device": device or None,
+        "client": session.get("Client") or None,
+        "platform": session.get("DeviceName") or None,
+        "local": None,
+        "position": pos,
+        "count": count,
+    }
+    decision = playback_decision(play.get("PlayMethod"), transcode.get("PlayMethod"))
+    if not decision:
+        if transcode:
+            decision = ("Direct Stream" if transcode.get("IsVideoDirect") is True
+                        and transcode.get("IsAudioDirect") is True else "Transcoding")
+        elif item:
+            decision = "Direct Play"
+    source_resolution = (emby_resolution(video.get("Width"), video.get("Height"))
+                         if video else None)
+    output_resolution = (emby_resolution(transcode.get("Width"), transcode.get("Height"))
+                         if transcode else None)
+    stream_info = {
+        "decision": decision,
+        "sourceResolution": source_resolution,
+        "outputResolution": output_resolution,
+        "videoCodec": ((transcode.get("VideoCodec") if transcode else None)
+                       or (video.get("Codec") if video else None)),
+        "audioCodec": ((transcode.get("AudioCodec") if transcode else None)
+                       or (audio.get("Codec") if audio else None)),
+        "dynamicRange": dynamic_range_label(
+            video.get("VideoRangeType") if video else None,
+            video.get("VideoRange") if video else None,
+            video.get("DisplayTitle") if video else None,
+            video.get("VideoDoViTitle") if video else None),
+        "bitrateKbps": bitrate_kbps(
+            (transcode.get("Bitrate") if transcode else None)
+            or (video.get("BitRate") if video else None), bits_per_second=True),
+        "bandwidthKbps": bitrate_kbps(
+            transcode.get("Bitrate") if transcode else None,
+            bits_per_second=True),
+        "hardware": bool(transcode.get("HardwareAccelerationType")) if transcode else False,
+    }
+    tracks = {"audio": emby_track(audio), "subtitle": emby_track(subtitle)}
+    return session_info, stream_info, tracks
+
+
+def parse_emby_session(session, extras, position=None):
     """One Emby /Sessions entry -> now-playing dict (same shape as Plex)."""
     item = session.get("NowPlayingItem") or {}
     play = session.get("PlayState") or {}
@@ -622,6 +938,8 @@ def parse_emby_session(session, extras):
         "title": item.get("SeriesName") if is_episode else item.get("Name"),
         "year": item.get("ProductionYear"),
     }
+    info["session"], info["stream"], info["tracks"] = \
+        emby_session_payload(session, position)
     if is_episode and item.get("ParentIndexNumber") and item.get("IndexNumber"):
         info["subtitle"] = (f"S{item['ParentIndexNumber']} · "
                             f"E{item['IndexNumber']} · {item.get('Name')}")
@@ -669,7 +987,7 @@ def parse_emby_session(session, extras):
     return info
 
 
-def parse_session(video, extras=library_extras):
+def parse_session(video, extras=library_extras, position=None):
     """Video element from /status/sessions -> now-playing dict."""
     a = video.get
     is_episode = a("type") == "episode"
@@ -680,6 +998,8 @@ def parse_session(video, extras=library_extras):
         "title": a("grandparentTitle") if is_episode else a("title"),
         "year": a("year"),
     }
+    info["session"], info["stream"], info["tracks"] = \
+        plex_session_payload(video, position)
     if is_episode and a("parentIndex") and a("index"):
         info["subtitle"] = f"S{a('parentIndex')} · E{a('index')} · {a('title')}"
 
@@ -855,9 +1175,17 @@ def current_session():
     # Sort before picking: the server's order is not stable, and without this
     # the card flips between two people's sessions on an arbitrary poll.
     allowed.sort(key=lambda pair: pair[0])
-    picked = rotate_pick([video for _, video in allowed],
-                         clamp_rotate(s.get("rotateSeconds")))
-    return parse_session(picked) if picked is not None else None
+    candidates = [video for _, video in allowed]
+    picked = rotate_pick(candidates, clamp_rotate(s.get("rotateSeconds")))
+    if picked is None:
+        return None
+    info = parse_session(picked, position=(candidates.index(picked) + 1,
+                                           len(candidates)))
+    # The rotation count only covers allowed candidates. Active streams is a
+    # separate server-wide indicator and intentionally includes filtered
+    # movie/episode sessions without exposing their titles or users.
+    info.setdefault("session", {})["activeStreams"] = len(seen)
+    return info
 
 
 def emby_session_names(s):
@@ -1007,8 +1335,8 @@ def emby_current_session():
     # flipped between two people's titles on an arbitrary poll. Sort, then let
     # the clock decide whose turn it is — same rotation as the Plex path.
     allowed.sort(key=lambda pair: pair[0])
-    match = rotate_pick([session for _, session in allowed],
-                        clamp_rotate(s.get("rotateSeconds")))
+    candidates = [session for _, session in allowed]
+    match = rotate_pick(candidates, clamp_rotate(s.get("rotateSeconds")))
     if match is None:
         return None
     item = match.get("NowPlayingItem") or {}
@@ -1017,7 +1345,11 @@ def emby_current_session():
     # Better a blank display than an overshare the pre-filter couldn't see.
     if content_blocked(block, emby_item_terms(item)):
         return None
-    return parse_emby_session(match, extras=emby_extras)
+    info = parse_emby_session(match, extras=emby_extras,
+                              position=(candidates.index(match) + 1,
+                                        len(candidates)))
+    info.setdefault("session", {})["activeStreams"] = len(seen)
+    return info
 
 
 def migrate_block_layout(value, current_template):
@@ -1045,14 +1377,15 @@ def load_settings():
         merged = {**DEFAULT_SETTINGS, **{k: v for k, v in saved.items() if k in DEFAULT_SETTINGS}}
         merged["blockLayout"] = migrate_block_layout(
             merged["blockLayout"], merged.get("template") or "spotlight")
+        clean_custom_backdrop_settings(merged)
+        clean_display_settings(merged)
         return migrate_show_flags(merged)
     except Exception:
         return dict(DEFAULT_SETTINGS)
 
 
 def clean_block_position(position):
-    """One block's {x,y,width,scale,align,font,color}, numbers clamped to sane
-    ranges, unknown keys dropped."""
+    """One block's safe layout/style fields; unknown keys are dropped."""
     item = {}
     for key, low, high in (("x", -100, 100), ("y", -100, 100),
                            ("width", 5, 100), ("scale", 0.3, 3)):
@@ -1063,10 +1396,52 @@ def clean_block_position(position):
         item["align"] = position["align"]
     if position.get("font") in TITLE_FONTS:
         item["font"] = position["font"]
+    if position.get("logoFit") in ("contain", "width", "natural"):
+        item["logoFit"] = position["logoFit"]
+    logo_zoom = position.get("logoZoom")
+    if isinstance(logo_zoom, (int, float)) and not isinstance(logo_zoom, bool):
+        item["logoZoom"] = round(max(50, min(200, logo_zoom)), 2)
     color = position.get("color")
     if isinstance(color, str) and ACCENT_RE.match(color):
         item["color"] = color
+    for key in ("panelBackground", "panelBorder"):
+        if isinstance(position.get(key), bool):
+            item[key] = position[key]
     return item
+
+
+def clamp_setting(value, low, high, default):
+    try:
+        return max(low, min(high, int(float(value))))
+    except (TypeError, ValueError):
+        return default
+
+
+def clean_custom_backdrop_settings(settings):
+    """Clamp custom-art controls that are consumed directly by CSS."""
+    settings["customBackdropEnabled"] = bool(settings.get("customBackdropEnabled"))
+    if settings.get("customBackdropFit") not in ("cover", "contain", "fill"):
+        settings["customBackdropFit"] = "cover"
+    for key, low, high, default in (
+            ("customBackdropZoom", 50, 300, 100),
+            ("customBackdropX", 0, 100, 50),
+            ("customBackdropY", 0, 100, 50),
+            ("customBackdropOpacity", 5, 100, 35),
+            ("customBackdropBlur", 0, 20, 0),
+            ("customBackdropBrightness", 25, 150, 100)):
+        settings[key] = clamp_setting(settings.get(key), low, high, default)
+    return settings
+
+
+def clean_display_settings(settings):
+    """Validate target-preview dimensions and enhanced display switches."""
+    settings["displayWidth"] = clamp_setting(
+        settings.get("displayWidth"), 320, 3840, 800)
+    settings["displayHeight"] = clamp_setting(
+        settings.get("displayHeight"), 240, 2160, 480)
+    settings["showDeviceLocation"] = bool(settings.get("showDeviceLocation"))
+    settings["streetRainAnimation"] = bool(settings.get("streetRainAnimation"))
+    return settings
 
 
 def clean_block_layout(value):
@@ -1090,8 +1465,7 @@ def clean_block_layout(value):
 
 
 def clean_block_visibility(value):
-    """{template: {block: bool}} — sparse overrides of TEMPLATE_DEFAULT_BLOCKS.
-    Only TOGGLEABLE_BLOCKS may be hidden/shown; stinger is content-driven."""
+    """{template: {block: bool}} — sparse overrides of template defaults."""
     if not isinstance(value, dict):
         return {}
     cleaned = {}
@@ -1107,6 +1481,7 @@ def clean_block_visibility(value):
 
 # Display-only keys a shared setup may carry along (never location or creds).
 PRESET_EXTRA_KEYS = ("clockFormat", "clockSeconds", "weatherFX",
+                     "streetRainAnimation", "showDeviceLocation",
                      "weatherIntensity", "weatherUnits",
                      "fanartType", "fanartRotateSeconds")
 
@@ -1148,7 +1523,8 @@ def clean_presets(value):
             if not isinstance(kept.get("weatherIntensity"), int) \
                     or not 1 <= kept.get("weatherIntensity", 0) <= 4:
                 kept.pop("weatherIntensity", None)
-            for boolean in ("clockSeconds", "weatherFX"):
+            for boolean in ("clockSeconds", "weatherFX",
+                            "streetRainAnimation", "showDeviceLocation"):
                 if boolean in kept and not isinstance(kept[boolean], bool):
                     kept.pop(boolean, None)
             if kept.get("fanartType") not in FANART_TYPES:
@@ -1170,7 +1546,7 @@ def clean_presets(value):
 # ponytail: one-shot migration like migrate_block_layout; delete both together.
 SHOW_FLAG_BLOCKS = {"showPlot": "plot", "showClock": "clock",
                     "showScores": "ratings", "showProgress": "progress",
-                    "backdrop": "backdrop"}
+                    "showGenres": "category", "backdrop": "backdrop"}
 
 
 def migrate_show_flags(settings):
@@ -1239,6 +1615,16 @@ class WebHandler(BaseHTTPRequestHandler):
             self._send(json.dumps(weather()), "application/json")
         elif path == "/sessions":
             self._send(json.dumps({"sessions": LAST_SESSIONS}), "application/json")
+        elif path == "/custom-backdrop":
+            custom = custom_backdrop_info()
+            if not custom:
+                self._send("not found", "text/plain", 404)
+            else:
+                try:
+                    with open(custom[0], "rb") as f:
+                        self._send(f.read(), custom[1])
+                except OSError:
+                    self._send("not found", "text/plain", 404)
         elif path == "/now-playing.json":
             # Served explicitly rather than through the static fallthrough so we
             # can timestamp the card's heartbeat -- see card_alive().
@@ -1266,8 +1652,37 @@ class WebHandler(BaseHTTPRequestHandler):
             name = os.path.basename(urllib.parse.unquote(path))  # no traversal
             self._send_file(os.path.join(OUTPUT, name))
 
+    def _upload_custom_backdrop(self):
+        """Persist one validated JPEG, PNG, or WebP in the /config volume."""
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return self._send(json.dumps({"ok": False, "error": "empty upload"}),
+                              "application/json", 400)
+        if length > MAX_CUSTOM_BACKDROP_BYTES:
+            return self._send(json.dumps({"ok": False,
+                                          "error": "image exceeds the 15 MB limit"}),
+                              "application/json", 413)
+        data = self.rfile.read(length)
+        mime = image_mime(data[:16])
+        if not mime:
+            return self._send(json.dumps({"ok": False,
+                                          "error": "use a JPEG, PNG, or WebP image"}),
+                              "application/json", 415)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        atomic_write(CUSTOM_BACKDROP_PATH, data, "wb")
+        custom = custom_backdrop_info()
+        self._send(json.dumps({"ok": True, "mime": mime,
+                               "version": custom[2] if custom else ""}),
+                   "application/json")
+
     def do_POST(self):
-        if self.path.split("?")[0] != "/save":
+        path = self.path.split("?")[0]
+        if path == "/custom-backdrop":
+            return self._upload_custom_backdrop()
+        if path != "/save":
             return self._send("not found", "text/plain", 404)
         try:
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -1336,10 +1751,24 @@ class WebHandler(BaseHTTPRequestHandler):
             merged["blockLayout"] = clean_block_layout(merged["blockLayout"])
             merged["blockVisibility"] = clean_block_visibility(merged["blockVisibility"])
             merged["presets"] = clean_presets(merged["presets"])
+            clean_custom_backdrop_settings(merged)
+            clean_display_settings(merged)
             atomic_write(SETTINGS_PATH, json.dumps(merged))
             self._send(json.dumps({"ok": True}), "application/json")
         except Exception as e:
             self._send(json.dumps({"ok": False, "error": str(e)}), "application/json", 400)
+
+    def do_DELETE(self):
+        if self.path.split("?")[0] != "/custom-backdrop":
+            return self._send("not found", "text/plain", 404)
+        try:
+            os.unlink(CUSTOM_BACKDROP_PATH)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            return self._send(json.dumps({"ok": False, "error": str(e)}),
+                              "application/json", 500)
+        self._send(json.dumps({"ok": True}), "application/json")
 
 
 def serve_web():
@@ -1416,14 +1845,31 @@ SAMPLE_SESSION = """<Video type="movie" title="The Devil Wears Prada 2" year="20
   rating="7.7" ratingImage="rottentomatoes://image.rating.ripe"
   audienceRating="8.4" audienceRatingImage="rottentomatoes://image.rating.upright"
   viewOffset="3600000">
-  <Media videoResolution="1080" videoCodec="h264" audioCodec="eac3"/>
-  <Player state="paused"/></Video>"""
+  <Media videoResolution="1080" videoCodec="h264" audioCodec="eac3"
+    videoDynamicRange="HDR10" bitrate="18000" videoDecision="directplay"
+    audioDecision="directplay">
+    <Part>
+      <Stream streamType="1" selected="1" codec="h264" width="1920" height="1080"
+        videoDynamicRange="HDR10" displayTitle="1080p HDR10 (H.264)"/>
+      <Stream streamType="2" selected="1" codec="eac3" channels="6"
+        language="English" displayTitle="English (EAC3 5.1)"/>
+      <Stream streamType="3" selected="1" codec="srt" language="English"
+        displayTitle="English (SRT)"/>
+    </Part>
+  </Media>
+  <User title="Alice"/>
+  <Player state="paused" title="Living Room TV" device="Android TV"
+    product="Plex for Android" platform="Android" local="1"/>
+  <Session bandwidth="22000" location="lan"/>
+</Video>"""
 
 SAMPLE_EXTRAS = {"genres": ["Comedy", "Drama"], "imdb": 7.2, "stinger": ["after"],
                  "poster": True, "backdrop": True, "logo": True}
 
 SAMPLE_EMBY_SESSION = {
     "UserName": "Alice",
+    "DeviceName": "Living Room TV",
+    "Client": "Jellyfin Android TV",
     "NowPlayingItem": {
         "Name": "The Devil Wears Prada 2", "Type": "Movie",
         "ProductionYear": 2026, "RunTimeTicks": 71411200000,
@@ -1432,11 +1878,18 @@ SAMPLE_EMBY_SESSION = {
         "ProviderIds": {"Tmdb": "12345"},
         "CommunityRating": 7.2, "CriticRating": 77,
         "MediaStreams": [
-            {"Type": "Video", "Codec": "h264", "Height": 1080, "Width": 1920},
-            {"Type": "Audio", "Codec": "eac3"},
+            {"Type": "Video", "Codec": "h264", "Height": 1080, "Width": 1920,
+             "Index": 0, "VideoRange": "HDR10", "BitRate": 18000000},
+            {"Type": "Audio", "Codec": "eac3", "Index": 1,
+             "Language": "English", "Channels": 6,
+             "DisplayTitle": "English (EAC3 5.1)"},
+            {"Type": "Subtitle", "Codec": "srt", "Index": 2,
+             "Language": "English", "DisplayTitle": "English (SRT)"},
         ],
     },
-    "PlayState": {"PositionTicks": 36000000000, "IsPaused": True},
+    "PlayState": {"PositionTicks": 36000000000, "IsPaused": True,
+                  "PlayMethod": "DirectPlay", "AudioStreamIndex": 1,
+                  "SubtitleStreamIndex": 2},
 }
 SAMPLE_EMBY_EXTRAS = {"stinger": ["after"],
                       "poster": True, "backdrop": True, "logo": True}
@@ -1533,6 +1986,17 @@ def selftest():
     assert info["state"] == "paused"
     assert info["stinger"] == ["after"]
     assert info["poster"] and info["backdrop"] and info["logo"]
+    assert info["session"] == {
+        "user": "Alice", "device": "Living Room TV",
+        "client": "Plex for Android", "platform": "Android",
+        "local": True, "position": 1, "count": 1}
+    assert info["stream"]["decision"] == "Direct Play"
+    assert info["stream"]["sourceResolution"] == "1080p"
+    assert info["stream"]["dynamicRange"] == "HDR10"
+    assert info["stream"]["bitrateKbps"] == 18000
+    assert info["stream"]["bandwidthKbps"] == 22000
+    assert info["tracks"]["audio"]["channels"] == "5.1"
+    assert info["tracks"]["subtitle"]["codec"] == "SRT"
 
     # ESP panel add-on: emby_download_art must also request the small panel-sized
     # backdrop/logo variants used by the on-device example ESPHome configs.
@@ -1561,21 +2025,39 @@ def selftest():
     # show*-flag migration: off-flags become per-template visibility overrides
     # (only on templates that carry the block), explicit overrides win, flags
     # neutralize to True so the migration is idempotent.
-    mig = migrate_show_flags({"showPlot": False, "backdrop": False,
+    mig = migrate_show_flags({"showPlot": False, "showGenres": False,
+                              "backdrop": False,
                               "blockVisibility": {"spotlight": {"plot": True}}})
-    assert mig["showPlot"] is True and mig["backdrop"] is True
+    assert mig["showPlot"] is True and mig["showGenres"] is True \
+        and mig["backdrop"] is True
     assert mig["blockVisibility"]["spotlight"]["plot"] is True  # explicit wins
     assert mig["blockVisibility"]["split"]["plot"] is False
     assert "plot" not in mig["blockVisibility"].get("hero", {})  # hero has no plot
+    assert mig["blockVisibility"]["hero"]["category"] is False
     assert mig["blockVisibility"]["hero"]["backdrop"] is False
     assert all("backdrop" in TEMPLATE_DEFAULT_BLOCKS[t] for t in TEMPLATES
                if t not in ("street", "fanart"))  # their art layer IS the backdrop
     assert "backdrop" not in TEMPLATE_DEFAULT_BLOCKS["street"]
+    assert {"streetframe", "nowplaying"} \
+        <= set(TEMPLATE_DEFAULT_BLOCKS["street"])
     assert TEMPLATE_DEFAULT_BLOCKS["bigclock"] == ("backdrop", "clock", "identity", "progress")
     assert "backdrop" in TOGGLEABLE_BLOCKS
+    assert {"category", "streetframe", "nowplaying", "viewer", "device",
+            "stream", "activity", "tracks", "stinger"} \
+        <= set(TOGGLEABLE_BLOCKS)
+    assert len(TITLE_FONTS) >= 11 and {"roboto", "orbitron", "bangers"} \
+        <= set(TITLE_FONTS)
     # per-block color: hex accepted, junk dropped
     assert clean_block_position({"color": "#AaBbCc"})["color"] == "#AaBbCc"
     assert "color" not in clean_block_position({"color": "red"})
+    assert clean_block_position({"logoFit": "contain", "logoZoom": 250}) == {
+        "logoFit": "contain", "logoZoom": 200}
+    assert clean_block_position({"logoFit": "crop", "logoZoom": 10}) == {
+        "logoZoom": 50}
+    assert clean_block_position({"panelBackground": False,
+                                 "panelBorder": True}) == {
+        "panelBackground": False, "panelBorder": True}
+    assert clean_block_position({"panelBackground": "false"}) == {}
     # presets: capped at 20, names clamped, nested shapes ride the cleaners
     junk = [{"name": "  Look %d  " % i, "template": "spotlight",
              "blockLayout": {"spotlight": {"identity": {"x": 999}}},
@@ -1598,11 +2080,16 @@ def selftest():
     assert shared["extras"] == {"clockFormat": "24h", "clockSeconds": True}
     layout = clean_block_layout({"spotlight": {
         "identity": {"x": 12.345, "y": -200, "width": 140,
-                     "scale": 9, "height": 50, "align": "center", "font": "bebas"},
+                      "scale": 9, "height": 50, "align": "center", "font": "bebas"},
+        "viewer": {"x": 65, "y": 70, "width": 30,
+                   "panelBackground": False, "panelBorder": True},
         "plot": {"align": "diagonal", "font": "comic-sans"},
         "unknown": {"x": 1}}, "not-a-template": {"identity": {"x": 1}}})
     assert layout == {"spotlight": {"identity": {"x": 12.35, "y": -100, "width": 100,
-                                                 "scale": 3, "align": "center", "font": "bebas"}}}
+                                                 "scale": 3, "align": "center", "font": "bebas"},
+                                     "viewer": {"x": 65, "y": 70, "width": 30,
+                                                "panelBackground": False,
+                                                "panelBorder": True}}}
     # Old flat saves (pre-per-template) get nested under the template that
     # was active when they were written, not silently dropped or reapplied
     # to every template.
@@ -1612,16 +2099,41 @@ def selftest():
         "spotlight": {"identity": {"x": 5}}}  # already nested: left alone
     assert migrate_block_layout({}, "hero") == {}
     vis = clean_block_visibility({"street": {"plot": False, "weather": True,
+                                            "stream": True,
                                             "stinger": True, "bogus": 1},
                                   "not-a-template": {"plot": False}})
-    assert vis == {"street": {"plot": False, "weather": True}}
-    assert visible_blocks("hero", {}) == {"backdrop", "clock", "identity", "meta",
-                                          "ratings", "progress"}
+    assert vis == {"street": {"plot": False, "weather": True, "stream": True,
+                               "stinger": True}}
+    assert visible_blocks("hero", {}) == {"backdrop", "clock", "category",
+                                          "identity", "meta", "ratings", "progress",
+                                          "stinger"}
     assert visible_blocks("hero", {"hero": {"plot": True, "clock": False}}) == \
-        {"backdrop", "identity", "meta", "ratings", "progress", "plot"}
+        {"backdrop", "category", "identity", "meta", "ratings", "progress",
+         "stinger", "plot"}
+    custom = clean_custom_backdrop_settings({
+        "customBackdropEnabled": 1, "customBackdropFit": "nonsense",
+        "customBackdropZoom": 999, "customBackdropX": -20,
+        "customBackdropY": "75", "customBackdropOpacity": 0,
+        "customBackdropBlur": "8", "customBackdropBrightness": 999})
+    assert custom == {
+        "customBackdropEnabled": True, "customBackdropFit": "cover",
+        "customBackdropZoom": 300, "customBackdropX": 0,
+        "customBackdropY": 75, "customBackdropOpacity": 5,
+        "customBackdropBlur": 8, "customBackdropBrightness": 150}
+    display = clean_display_settings({
+        "displayWidth": 9999, "displayHeight": "200",
+        "showDeviceLocation": 0, "streetRainAnimation": 1})
+    assert display == {"displayWidth": 3840, "displayHeight": 240,
+                       "showDeviceLocation": False,
+                       "streetRainAnimation": True}
+    assert image_mime(b"\x89PNG\r\n\x1a\nrest") == "image/png"
+    assert image_mime(b"\xff\xd8\xffrest") == "image/jpeg"
+    assert image_mime(b"RIFF1234WEBPrest") == "image/webp"
+    assert image_mime(b"<svg></svg>") is None
     assert ACCENT_RE.match("#A1b2C3") and not ACCENT_RE.match("red") \
         and not ACCENT_RE.match("#12345")
     v = ET.fromstring(SAMPLE_SESSION)
+    v.remove(v.find("User"))
     assert session_allowed(v, set(), set()) and not session_allowed(v, {"alice"}, set())
     v.append(ET.Element("User", {"id": "1", "title": "Alice"}))
     assert session_allowed(v, {"alice"}, set()) and not session_allowed(v, {"bob"}, set())
@@ -1760,7 +2272,8 @@ def selftest():
     real_fetch, real_parse, real_load = fetch_xml, parse_session, load_settings
     real_time = time.time
     try:
-        globals()["parse_session"] = lambda v: {"title": v.get("title")}
+        globals()["parse_session"] = lambda v, position=None: {
+            "title": v.get("title"), "position": position}
         globals()["load_settings"] = lambda: {"plexUsers": "", "plexDevices": "",
                                               "rotateSeconds": 30,
                                               "plexHost": "http://t:1",
@@ -1780,6 +2293,7 @@ def selftest():
         assert picks[("normal", "t1")] == "Jaws"
         assert picks[("normal", "t2")] == "Alien"      # wraps
         assert len(LAST_SESSIONS) == 2                 # both still reported
+        assert current_session()["session"]["activeStreams"] == 2
 
         # rotateSeconds = 0 pins the first sorted session forever
         globals()["load_settings"] = lambda: {"plexUsers": "", "plexDevices": "",
@@ -1817,6 +2331,13 @@ def selftest():
     assert einfo["scores"] == {"imdb": 7.2, "rtCritic": 77, "rtCriticFresh": True}
     assert einfo["stinger"] == ["after"]
     assert einfo["poster"] and einfo["backdrop"] and einfo["logo"]
+    assert einfo["session"]["user"] == "Alice"
+    assert einfo["session"]["device"] == "Living Room TV"
+    assert einfo["stream"]["decision"] == "Direct Play"
+    assert einfo["stream"]["sourceResolution"] == "1080p"
+    assert einfo["stream"]["dynamicRange"] == "HDR10"
+    assert einfo["tracks"]["audio"]["channels"] == "5.1"
+    assert einfo["tracks"]["subtitle"]["codec"] == "SRT"
     # both backends hand the card the same dict: same keys, no extras
     minfo = parse_session(ET.fromstring(SAMPLE_SESSION), extras=lambda k, m: SAMPLE_EXTRAS)
     assert set(einfo) == set(minfo), set(einfo) ^ set(minfo)
@@ -1834,6 +2355,12 @@ def selftest():
     assert emby_resolution(1280, 720) == "720p"
     assert emby_resolution(None, 1080) == "1080p"  # width missing -> height fallback
     assert emby_resolution(None, None) is None
+    assert playback_decision("transcode", "copy") == "Transcoding"
+    assert playback_decision("directstream") == "Direct Stream"
+    assert playback_decision("DirectPlay") == "Direct Play"
+    assert bitrate_kbps(18000000, bits_per_second=True) == 18000
+    assert channel_label(6) == "5.1" and channel_label(2) == "2.0"
+    assert dynamic_range_label("DOVI profile 8") == "Dolby Vision"
     scope = json.loads(json.dumps(SAMPLE_EMBY_SESSION))
     scope["NowPlayingItem"]["MediaStreams"] = [
         {"Type": "Video", "Codec": "h264", "Height": 696, "Width": 1920},
@@ -1910,8 +2437,9 @@ def selftest():
     real_eparse, real_etime = parse_emby_session, time.time
     try:
         globals()["emby_enrich"] = lambda item: item
-        globals()["parse_emby_session"] = lambda s, extras=None: {
-            "title": (s.get("NowPlayingItem") or {}).get("Name")}
+        globals()["parse_emby_session"] = lambda s, extras=None, position=None: {
+            "title": (s.get("NowPlayingItem") or {}).get("Name"),
+            "position": position}
         globals()["load_settings"] = lambda: {
             "plexUsers": "", "plexDevices": "", "rotateSeconds": 30,
             "embyHost": "http://test:1", "embyKey": "k"}
@@ -1927,6 +2455,7 @@ def selftest():
         assert picks[("normal", "t0")] == "Alien"      # alice sorts before Bob
         assert picks[("normal", "t1")] == "Jaws"
         assert len(LAST_SESSIONS) == 2                 # both still reported
+        assert emby_current_session()["session"]["activeStreams"] == 2
     finally:
         globals()["time"].time = real_etime
         globals()["emby_fetch_json"] = real_efetch
@@ -1942,8 +2471,9 @@ def selftest():
     try:
         globals()["USERS"], globals()["ENV_USERS"] = {"bob"}, "bob"
         globals()["emby_enrich"] = lambda item: item
-        globals()["parse_emby_session"] = lambda s, extras=None: {
-            "title": (s.get("NowPlayingItem") or {}).get("Name")}
+        globals()["parse_emby_session"] = lambda s, extras=None, position=None: {
+            "title": (s.get("NowPlayingItem") or {}).get("Name"),
+            "position": position}
         globals()["emby_fetch_json"] = lambda _p: emby_two(1)
         globals()["load_settings"] = lambda: {
             "plexUsers": "alice", "plexDevices": "", "rotateSeconds": 0,

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
+# version 4
 """marquee-shot: screenshot Marquee's card page and serve it as card.jpg.
 
 Pure logic + stdlib only at import time. Playwright is imported lazily inside
 the renderer so `--selftest` runs anywhere with just Python 3.
 
 Cadence: poll now-playing.json fast (POLL_EVERY); re-render only when the state
-meaningfully changes (play/pause/stop/title/EPISODE/seek) so those show quickly,
-plus a slow PROGRESS_EVERY heartbeat for the creeping progress bar. Idle -> one
-frame, then Chromium sleeps.
+meaningfully changes (play/pause/stop/title/EPISODE/viewer/device/stream/tracks/
+design/custom backdrop/seek) so those show quickly, plus a slow PROGRESS_EVERY
+heartbeat for the creeping progress bar. Idle -> one frame, then Chromium sleeps.
 
 Serves two routes:
   /card.jpg    the current 800x480 card image
@@ -41,7 +42,24 @@ def cfg():
     }
 
 
-def card_state(np):
+def content_signature(np, design=None):
+    """Stable signature of display metadata or saved design changes.
+
+    Progress is deliberately excluded: it is handled by the slower heartbeat
+    and seek detector. The enhanced Designer blocks are sourced from these
+    three objects. The settings document covers block layout, fonts, panel
+    styling, and the custom-backdrop version, so any visible design change also
+    bumps the screenshot version consumed by the ESPHome panel.
+    """
+    return json.dumps({
+        "design": design or {},
+        "session": np.get("session") or {},
+        "stream": np.get("stream") or {},
+        "tracks": np.get("tracks") or {},
+    }, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def card_state(np, design=None):
     """Extract the fields that decide when to re-render, from now-playing.json.
 
     `key` is Marquee's unique item Id, so a new EPISODE (same show title, new key)
@@ -56,15 +74,17 @@ def card_state(np):
         "title": str(np.get("title", "")),
         "key": str(np.get("key", "")),
         "offset": int(prog.get("offsetMs", 0) or 0),
+        "content_sig": content_signature(np, design),
     }
 
 
 def hard_change(prev, cur):
-    """True on play/pause/stop/title/EPISODE change — events that must show fast."""
+    """True for playback or displayed metadata changes that must show fast."""
     return (prev["playing"] != cur["playing"]
             or prev["state"] != cur["state"]
             or prev["title"] != cur["title"]
-            or prev["key"] != cur["key"])
+            or prev["key"] != cur["key"]
+            or prev["content_sig"] != cur["content_sig"])
 
 
 def is_seek(prev, cur, elapsed_s, seek_ms):
@@ -220,7 +240,9 @@ def run():
                 r.start()
                 prev = None  # force a fresh capture after relaunch
 
-            cur = card_state(fetch_json(f"{c['url']}/now-playing.json"))
+            playing_doc = fetch_json(f"{c['url']}/now-playing.json")
+            design_doc = fetch_json(f"{c['url']}/settings.json")
+            cur = card_state(playing_doc, design_doc)
             now = time.monotonic()
             elapsed = now - prev_mono
 
@@ -246,13 +268,25 @@ def run():
 
 
 def _selftest():
-    # card_state extracts exactly the fields we key on, including paused + key.
+    # card_state extracts exactly the fields we key on, including enhanced
+    # viewer/stream/track metadata but excluding normal progress movement.
     s = card_state({"playing": True, "state": "playing", "title": "X", "key": "k1",
-                    "progress": {"offsetMs": 12000}})
+                    "progress": {"offsetMs": 12000},
+                    "session": {"user": "Sam", "device": "CrowPanel"},
+                    "stream": {"decision": "Direct Play"},
+                    "tracks": {"audio": {"codec": "EAC3"}}},
+                   {"template": "spotlight", "customBackdropVersion": "7"})
     assert s == {"playing": True, "state": "playing", "paused": False, "title": "X",
-                 "key": "k1", "offset": 12000}, s
+                 "key": "k1", "offset": 12000,
+                 "content_sig": ('{"design":{"customBackdropVersion":"7",'
+                                 '"template":"spotlight"},'
+                                 '"session":{"device":"CrowPanel","user":"Sam"},'
+                                 '"stream":{"decision":"Direct Play"},'
+                                 '"tracks":{"audio":{"codec":"EAC3"}}}')}, s
     assert card_state({}) == {"playing": False, "state": "", "paused": False,
-                              "title": "", "key": "", "offset": 0}
+                              "title": "", "key": "", "offset": 0,
+                              "content_sig": ('{"design":{},"session":{},"stream":{},'
+                                              '"tracks":{}}')}
     assert card_state({"playing": True, "state": "paused"})["paused"] is True
 
     # hard_change: play/pause/stop/title/EPISODE flip true; advancing offset does not.
@@ -269,6 +303,28 @@ def _selftest():
     assert hard_change(base, card_state({"playing": True, "state": "playing",
                        "title": "X", "key": "k1", "progress": {"offsetMs": 4000}})) is False, \
         "advancing offset is not a hard change"
+    assert hard_change(base, card_state({
+        "playing": True, "state": "playing", "title": "X", "key": "k1",
+        "progress": {"offsetMs": 1000},
+        "session": {"user": "Sam", "device": "CrowPanel"}})) is True, \
+        "viewer/device change must refresh the panel immediately"
+    stream_base = card_state({
+        "playing": True, "state": "playing", "title": "X", "key": "k1",
+        "stream": {"decision": "Direct Play"},
+        "tracks": {"audio": {"codec": "EAC3"}}})
+    assert hard_change(stream_base, card_state({
+        "playing": True, "state": "playing", "title": "X", "key": "k1",
+        "stream": {"decision": "Transcoding"},
+        "tracks": {"audio": {"codec": "EAC3"}}})) is True
+    assert hard_change(stream_base, card_state({
+        "playing": True, "state": "playing", "title": "X", "key": "k1",
+        "stream": {"decision": "Direct Play"},
+        "tracks": {"audio": {"codec": "AAC"}}})) is True
+    assert hard_change(base, card_state({
+        "playing": True, "state": "playing", "title": "X", "key": "k1",
+        "progress": {"offsetMs": 1000}},
+        {"customBackdropVersion": "new", "template": "spotlight"})) is True, \
+        "saved layout or custom-art change must refresh the panel immediately"
 
     # is_seek: normal advance = no; big jump = yes; frozen (paused) = no.
     p = card_state({"playing": True, "state": "playing", "title": "X", "key": "k1",

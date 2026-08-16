@@ -1,4 +1,49 @@
+<!-- version 4 -->
 # Changelog
+
+## 2.2.1-esp32-enhanced.4 — 2026-08-17
+
+- Split Street's bulb-lit poster frame and NOW PLAYING sign out of the baked
+  scene so each can be moved, resized, scaled, recoloured, removed, and added
+  independently in Design while preserving the original default composition.
+- Added a bounded, centered title-logo viewport with automatic transparent-edge
+  trimming, contain/width/natural fit modes, and a 50–200% logo zoom control.
+- Kept existing Street layouts migration-free: older settings inherit the new
+  movable decorations at their original positions.
+
+## 2.2.1-esp32-enhanced.3 — 2026-08-17
+
+- Added target-display preview sizes with CrowPanel 800×480 as the default,
+  presets for Google Nest Hub and Nest Hub Max, common 16:9/4:3 sizes, and
+  validated custom dimensions.
+- Added an option to show or hide the Device block's live Local/Remote label.
+- Added an opt-in Active streams block backed by the media server's current
+  movie/episode session count.
+- Added a dedicated Street rain/storm animation switch.
+- Made Credits Badge removable and addable through the standard Design chips.
+
+## 2.2.1-esp32-enhanced.2 — 2026-08-16
+
+- Standardized Viewer, Device, Stream, and Audio & subtitles cards to the same
+  height, with independent per-block background and border switches.
+- Split the former composite Title block into separately movable Category and
+  Title blocks while retaining title-logo behaviour and old settings migration.
+- Expanded the per-block font picker to fifteen named fonts plus theme default.
+- Added persistent custom-backdrop upload with cover/contain/stretch, zoom,
+  horizontal/vertical focus, opacity, blur, and brightness controls.
+- Updated `marquee-shot` to refresh immediately after any saved design or
+  custom-backdrop change, as well as playback/session changes.
+
+## 2.2.1-esp32-enhanced.1 — 2026-08-16
+
+- Added opt-in Viewer, Device, Stream, and Audio & subtitles Designer blocks.
+- Normalized Plex, Emby, and Jellyfin session, playback-path, HDR, bitrate,
+  audio, and subtitle data into the shared `now-playing.json` payload.
+- Added eligible-session position/count so a card can show which viewer is
+  currently selected during rotation.
+- Updated `marquee-shot` to capture immediately when viewer, device, stream,
+  or track metadata changes, so ESPHome panels do not show stale details.
+- Preserved the ESP32 fork's panel-sized backdrop and logo image variants.
 
 ## 2.2.1 — 2026-08-02
 

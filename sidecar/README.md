@@ -1,3 +1,4 @@
+<!-- version 4 -->
 # marquee-shot (optional ESP-panel sidecar)
 
 Renders Marquee's real card page to `card.jpg` and serves it, so an ESP32 panel
@@ -45,7 +46,7 @@ size and apply.
 **Docker Compose** (this repo, for dev/deploy) — opt-in via the `panel` profile,
 so a plain `docker compose up -d` never starts it:
 
-    docker compose --profile panel up -d
+    docker compose --profile panel up -d --build
 
 ## Environment
 
@@ -60,9 +61,16 @@ so a plain `docker compose up -d` never starts it:
 | `SERVE_PORT` | `8088` | port that serves `/card.jpg` |
 | `SETTLE_SECONDS` | `0.8` | delay after reload before capture, so the card is fresh |
 
-Re-renders happen on **state change** (play/pause/stop/title/seek) for fast
-reaction, plus a slow `PROGRESS_EVERY` heartbeat while playing. Chromium is idle
+Re-renders happen on **state change** (play/pause/stop/title/seek), when enhanced
+viewer/device/playback/track data changes, and whenever saved Design settings
+or the custom-backdrop version changes. This keeps the ESPHome panel current
+without waiting for the slower `PROGRESS_EVERY` heartbeat. Chromium is idle
 when nothing is playing.
+
+This enhanced source package tags its locally built sidecar as
+`marquee-shot:esp32-enhanced-v3`. Use `--build` with the Compose command so the
+metadata-aware capture code in this directory is used instead of the original
+published image.
 
 **Other displays:** set `PANEL_WIDTH`/`PANEL_HEIGHT` to your panel's resolution —
 the card is responsive and reflows to it. No code changes.

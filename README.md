@@ -1,3 +1,4 @@
+<!-- version 4 -->
 # Marquee
 
 [![Build](https://github.com/Jamisonfitz/marquee/actions/workflows/container.yml/badge.svg)](https://github.com/Jamisonfitz/marquee/actions/workflows/container.yml)
@@ -22,6 +23,42 @@ Marquee turns a Google Nest Hub into a clean now-playing display for Plex, Emby,
 >
 > Everything else in this README is upstream Marquee, unchanged — run it exactly as documented below and add the panel on top.
 
+## ESP32 Enhanced v4
+
+This source package keeps the fork's `marquee-shot` and CrowPanel/ESPHome
+support, and adds five optional Designer blocks: **Viewer**, **Device**,
+**Stream**, **Active streams**, and **Audio & subtitles**. They expose the active user and rotation
+position, playback client/device, Direct Play/Direct Stream/Transcoding path,
+resolution/HDR/bitrate, and selected tracks where the media server reports
+them. Version 2 makes the session cards equal-height and lets each card hide its
+background and border independently. Version 3 adds a Local/Remote label switch
+to Device and a server-wide count of streams currently in progress. The
+movie/show **Title** and **Category**
+are separate movable blocks, and the font picker now includes fifteen typefaces
+plus the theme default.
+
+Backdrop editing also accepts a persistent custom JPEG, PNG, or WebP image.
+It can cover, contain, or stretch to the frame, with independent zoom, focus,
+opacity, blur, and brightness controls. The uploaded file stays in `/config`.
+The Design preview now defaults to the CrowPanel's native **800 × 480** and can
+preview Google Nest Hub, Nest Hub Max, 16:9, 4:3, or custom viewport sizes.
+Street has a separate rain-animation switch, and Credits Badge can be removed
+or added from the normal block chips. Version 4 also turns Street's poster-light
+frame and NOW PLAYING sign into independently movable blocks. Title logo art is
+centered inside a bounded box, automatically trims transparent padding, and has
+contain/width/natural fit plus 50–200% zoom controls.
+
+For the CrowPanel screenshot workflow, this package's sidecar also detects
+changes to those fields and immediately publishes a new `card.jpg`. Build the
+local sidecar rather than using the original published image:
+
+```sh
+# version 4
+docker compose --profile panel up -d --build
+```
+
+See [`ENHANCEMENTS.md`](ENHANCEMENTS.md) for upgrade and validation details.
+
 ![Marquee — Street template](https://github.com/Jamisonfitz/marquee/releases/download/v2.2.1/street.jpg)
 
 *Seven templates, per-block colors and fonts, every block movable — your setup will not look like anyone else's.*
@@ -38,13 +75,14 @@ Seven layouts, switchable live from the settings page:
 | ![Fanart](https://github.com/Jamisonfitz/marquee/releases/download/v2.2.1/fanart.jpg) **Fanart** — fanart.tv artwork rotating on a blank canvas; add only the blocks you want (free API key required) | |
 
 Every template is built from the same set of blocks — backdrop, clock, weather,
-title, metadata, plot, ratings, progress, poster — and every block carries its
+category, title, metadata, plot, ratings, progress, poster, viewer, device,
+stream, active streams, audio/subtitles, and credits badge — and every block carries its
 own position, size, font, and color per template, so a nudge in Spotlight
 never moves anything in Street.
 
 ## The settings page is the card
 
-Settings v2 has no wall of options. The card fills the page; you edit what
+Settings v3 has no wall of options. The card fills the page; you edit what
 you're looking at.
 
 ![Settings v2 — the card is the page](https://github.com/Jamisonfitz/marquee/releases/download/v2.2.1/settings-design.jpg)
@@ -52,8 +90,10 @@ you're looking at.
 - **Tap anything.** Tap a block on the live preview — or its chip below — and
   the editor shows just that block's controls: font, color, position, width,
   size, plus whatever it owns (clock style and seconds, weather effects and
-  intensity, which metadata pieces show, logo art vs text title). Tap the
-  card's empty background to edit the backdrop.
+  intensity, panel background/border, logo art vs text title). Tap the card's
+  empty background to upload, crop, zoom, and style a custom backdrop.
+- **Preview the real target.** CrowPanel 800×480 is the default, with presets
+  for both Nest Hub sizes, 16:9, 4:3, and custom pixel dimensions.
 - **The chips tell the truth.** One pill per block on the card: × takes it
   off, "+ Add" brings anything back. When a block is on your card but has
   nothing to show for the current title — no scores yet, an emptied metadata
@@ -80,7 +120,8 @@ you're looking at.
 - Seven templates, including Street (animated night scene with rain, snow,
   smoke-fog, and storms that follow your real weather, intensity 1–4) and
   Fanart (rotating fanart.tv art on a blank canvas).
-- Every block — clock, weather, title, plot, ratings, progress, poster —
+- Every block — clock, weather, title, plot, ratings, progress, poster, viewer,
+  device, stream, active streams, audio/subtitles, and credits badge —
   addable, removable, and movable per template, each with its own font and
   color. Tap it on the live preview to edit it.
 - Presets and "Share this look": snapshot a layout, or export it as a small

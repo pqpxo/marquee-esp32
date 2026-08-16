@@ -1,3 +1,4 @@
+<!-- version 4 -->
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -104,12 +105,25 @@
   .preview-row { display: grid; grid-template-columns: minmax(0,1fr) 360px;
     gap: 22px; align-items: start; }
   .mq-side { min-width: 0; }
-  .frame-box { width: 100%; max-width: 1000px; aspect-ratio: 16 / 10;
+  .display-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px;
+    max-width: 1000px; margin: 0 0 10px; }
+  .display-toolbar label { display: grid; gap: 4px; color: var(--mut);
+    font-size: 11px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; }
+  .display-toolbar select, .display-toolbar input { min-height: 38px;
+    border: 1px solid var(--line); border-radius: 8px; background: #0B0D10;
+    color: var(--text); padding: 7px 10px; font: inherit; }
+  .display-toolbar select { min-width: 250px; }
+  .display-custom { display: flex; align-items: end; gap: 8px; }
+  .display-custom input { width: 82px; }
+  .display-times { color: var(--mut); padding-bottom: 9px; }
+  .display-size-note { color: var(--mut); font-size: 12px; padding-bottom: 10px; }
+  .frame-box { width: 100%; max-width: 1000px; aspect-ratio: 5 / 3;
     border: 2px solid #1D2229; border-radius: 12px; overflow: hidden;
     background: #07090C;
     box-shadow: 0 0 0 1px #060809, 0 18px 44px -18px rgba(0,0,0,.85),
       0 10px 60px -12px rgba(229,168,59,.14); }
-  .frame-box iframe { width: 1280px; height: 800px; border: 0; transform-origin: 0 0; }
+  .frame-box iframe { width: 800px; height: 480px; border: 0; transform-origin: 0 0; }
   .side-sub { color: var(--mut); font-size: 12.5px; margin: 8px 2px 6px; }
 
   /* Chip strip: block presence + selection */
@@ -220,6 +234,9 @@
     border: 1px solid var(--line); border-radius: 9px; padding: 8px 13px;
     font-weight: 700; font-size: 13px; cursor: pointer; }
   .secondary:hover { border-color: rgba(229,168,59,.5); }
+  .backdrop-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .backdrop-sliders { margin-top: 8px; }
+  #custom-backdrop-controls[hidden] { display:none !important; }
   #no-blocks-note { color: var(--mut); font-size: 13px; margin: 0 0 8px; }
   #editor-toggle { display: none; width: 100%; margin-top: 10px; }
 
@@ -302,6 +319,9 @@
       padding: 6px 0 8px; border-bottom: 1px solid var(--line);
       box-shadow: 0 10px 24px -18px rgba(0,0,0,.8); }
     .frame-box { max-width: min(100%, 42dvh); margin: 0 auto; }
+    .display-toolbar { margin-bottom: 7px; }
+    .display-toolbar select { min-width: min(100%, 250px); }
+    .display-size-note { display: none; }
     .tcard { width: 74px; padding: 5px; }
     .tcard img, .tcard .pthumb { width: 60px; }
     .tcard b { font-size: 9.5px; }
@@ -393,6 +413,29 @@
 
     <div class="preview-row">
       <div class="mq-side">
+        <div class="display-toolbar" aria-label="Target display preview size">
+          <label for="display-preset">Target display
+            <select id="display-preset">
+              <option value="800x480">CrowPanel 7 — 800 × 480 (default)</option>
+              <option value="1024x600">Google Nest Hub — 1024 × 600</option>
+              <option value="1280x800">Google Nest Hub Max — 1280 × 800</option>
+              <option value="1280x720">HD 16:9 — 1280 × 720</option>
+              <option value="1920x1080">Full HD 16:9 — 1920 × 1080</option>
+              <option value="800x600">4:3 display — 800 × 600</option>
+              <option value="custom">Custom size</option>
+            </select>
+          </label>
+          <div class="display-custom" id="display-custom" hidden>
+            <label for="display-width">Width
+              <input id="display-width" type="number" min="320" max="3840" step="1" value="800">
+            </label>
+            <span class="display-times" aria-hidden="true">×</span>
+            <label for="display-height">Height
+              <input id="display-height" type="number" min="240" max="2160" step="1" value="480">
+            </label>
+          </div>
+          <span class="display-size-note" id="display-size-note">Previewing 800 × 480 · 5:3</span>
+        </div>
         <div class="frame-box"><iframe id="frame" title="Live card preview" tabindex="-1"></iframe></div>
         <p class="side-sub">Demo data — every change previews instantly; tap any block
           to edit it. Nothing reaches the Hub until you save.</p>
@@ -415,6 +458,16 @@
               <option value="playfair">Playfair Display</option>
               <option value="cinzel">Cinzel</option>
               <option value="grotesk">Space Grotesk</option>
+              <option value="roboto">Roboto</option>
+              <option value="montserrat">Montserrat</option>
+              <option value="lato">Lato</option>
+              <option value="raleway">Raleway</option>
+              <option value="anton">Anton</option>
+              <option value="orbitron">Orbitron</option>
+              <option value="righteous">Righteous</option>
+              <option value="merriweather">Merriweather</option>
+              <option value="libre">Libre Baskerville</option>
+              <option value="bangers">Bangers</option>
             </select>
           </div>
 
@@ -432,9 +485,94 @@
             </div>
           </div>
 
-          <div id="ctx-title" class="ed-row" hidden>
-            <label for="ck-logo">Use logo art<small>Movie/show logo cutout instead of text title</small></label>
-            <input type="checkbox" class="switch" id="ck-logo" data-k="logo" role="switch">
+          <div id="ctx-title" hidden>
+            <div class="ed-row">
+              <label for="ck-logo">Use logo art<small>Movie/show logo cutout instead of text title</small></label>
+              <input type="checkbox" class="switch" id="ck-logo" data-k="logo" role="switch">
+            </div>
+            <div class="ed-row">
+              <label for="logo-fit">Logo fit<small>Contain keeps the whole logo centered inside the Title box</small></label>
+              <select id="logo-fit" class="mini" data-layout-field="logoFit">
+                <option value="contain">Contain whole logo</option>
+                <option value="width">Fit to width</option>
+                <option value="natural">Natural size</option>
+              </select>
+            </div>
+            <div class="sliders">
+              <div class="slider"><label>Logo zoom <output data-value="logoZoom">100</output>%</label>
+                <input data-layout-field="logoZoom" type="range" min="50" max="200"
+                  step="1" value="100" aria-label="Logo zoom inside the Title block"></div>
+            </div>
+          </div>
+
+          <div id="ctx-session-style" hidden>
+            <div class="ed-row">
+              <label for="panel-background">Panel background<small>Turn off for text and icons directly over the card</small></label>
+              <input type="checkbox" class="switch" id="panel-background"
+                data-layout-toggle="panelBackground" role="switch" checked>
+            </div>
+            <div class="ed-row">
+              <label for="panel-border">Panel border<small>Independent from the panel background</small></label>
+              <input type="checkbox" class="switch" id="panel-border"
+                data-layout-toggle="panelBorder" role="switch" checked>
+            </div>
+          </div>
+
+          <div id="ctx-device" hidden>
+            <div class="ed-row">
+              <label for="ck-device-location">Local / Remote label<small>Show the live connection location reported by the media server</small></label>
+              <input type="checkbox" class="switch" id="ck-device-location"
+                data-k="showDeviceLocation" role="switch" checked>
+            </div>
+          </div>
+
+          <div id="ctx-street" hidden>
+            <div class="ed-row">
+              <label for="ck-street-rain">Rain animation<small>Allow rain and storm particles when Street follows wet weather</small></label>
+              <input type="checkbox" class="switch" id="ck-street-rain"
+                data-k="streetRainAnimation" role="switch" checked>
+            </div>
+          </div>
+
+          <div id="ctx-backdrop" hidden>
+            <div class="ed-row">
+              <span class="ed-lab">Custom backdrop<small id="custom-backdrop-state">No custom image uploaded</small></span>
+              <div class="backdrop-actions">
+                <input type="file" id="custom-backdrop-file"
+                  accept="image/jpeg,image/png,image/webp" hidden>
+                <button class="secondary" id="upload-backdrop" type="button">Upload image</button>
+                <button class="secondary" id="remove-backdrop-image" type="button" hidden>Delete image</button>
+              </div>
+            </div>
+            <div class="ed-row">
+              <label for="ck-custom-backdrop">Use custom image<small>Replaces the current movie/show backdrop</small></label>
+              <input type="checkbox" class="switch" id="ck-custom-backdrop"
+                data-k="customBackdropEnabled" role="switch">
+            </div>
+            <div id="custom-backdrop-controls">
+              <div class="ed-row">
+                <label for="custom-backdrop-fit">Fit / resize mode</label>
+                <select id="custom-backdrop-fit" class="mini" data-backdrop-field="customBackdropFit">
+                  <option value="cover">Cover frame</option>
+                  <option value="contain">Contain whole image</option>
+                  <option value="fill">Stretch to frame</option>
+                </select>
+              </div>
+              <div class="sliders backdrop-sliders">
+                <div class="slider"><label>Zoom / scale <output data-backdrop-value="customBackdropZoom">100</output>%</label>
+                  <input data-backdrop-field="customBackdropZoom" type="range" min="50" max="300" step="1" value="100"></div>
+                <div class="slider"><label>Horizontal focus <output data-backdrop-value="customBackdropX">50</output>%</label>
+                  <input data-backdrop-field="customBackdropX" type="range" min="0" max="100" step="1" value="50"></div>
+                <div class="slider"><label>Vertical focus <output data-backdrop-value="customBackdropY">50</output>%</label>
+                  <input data-backdrop-field="customBackdropY" type="range" min="0" max="100" step="1" value="50"></div>
+                <div class="slider"><label>Opacity <output data-backdrop-value="customBackdropOpacity">35</output>%</label>
+                  <input data-backdrop-field="customBackdropOpacity" type="range" min="5" max="100" step="1" value="35"></div>
+                <div class="slider"><label>Blur <output data-backdrop-value="customBackdropBlur">0</output>px</label>
+                  <input data-backdrop-field="customBackdropBlur" type="range" min="0" max="20" step="1" value="0"></div>
+                <div class="slider"><label>Brightness <output data-backdrop-value="customBackdropBrightness">100</output>%</label>
+                  <input data-backdrop-field="customBackdropBrightness" type="range" min="25" max="150" step="1" value="100"></div>
+              </div>
+            </div>
           </div>
 
           <div id="ctx-clock" hidden>
@@ -525,7 +663,6 @@
           <div id="ctx-meta" class="ed-row" hidden>
             <span class="ed-lab">Included in metadata</span>
             <div class="metachips">
-              <label><input type="checkbox" id="ck-genres" data-k="showGenres"><span>Genres</span></label>
               <label><input type="checkbox" id="ck-mediainfo" data-k="showMediaInfo"><span>Media info</span></label>
               <label><input type="checkbox" id="ck-contentrating" data-k="showContentRating"><span>Rating</span></label>
               <label><input type="checkbox" id="ck-runtime" data-k="showRuntime"><span>Runtime</span></label>
@@ -674,7 +811,13 @@
   let cfg = { hubIp: '', template: 'spotlight', theme: 'amber', accent: '',
     titleFont: 'system', clockFormat: '12h', blockLayout: {},
     blockVisibility: {}, presets: [],
-    showWeather: false, weatherFX: true, weatherIntensity: 2 };
+    displayWidth: 800, displayHeight: 480,
+    showWeather: false, weatherFX: true, weatherIntensity: 2,
+    showDeviceLocation: true, streetRainAnimation: true,
+    customBackdropEnabled: false, customBackdropAvailable: false,
+    customBackdropFit: 'cover', customBackdropZoom: 100,
+    customBackdropX: 50, customBackdropY: 50, customBackdropOpacity: 35,
+    customBackdropBlur: 0, customBackdropBrightness: 100 };
   const cardBase = '/image';
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -682,29 +825,40 @@
   // — no shared codegen between the three, same as TEMPLATES already being
   // duplicated across all of them.
   const TEMPLATE_DEFAULT_BLOCKS = {
-    spotlight: ['backdrop', 'clock', 'identity', 'meta', 'plot', 'ratings', 'progress', 'poster'],
-    split: ['backdrop', 'clock', 'identity', 'meta', 'plot', 'ratings', 'progress', 'poster'],
-    hero: ['backdrop', 'clock', 'identity', 'meta', 'ratings', 'progress'],
-    lowerthird: ['backdrop', 'clock', 'identity', 'meta', 'ratings', 'progress'],
+    spotlight: ['backdrop', 'clock', 'category', 'identity', 'meta', 'plot', 'ratings', 'progress', 'poster', 'stinger'],
+    split: ['backdrop', 'clock', 'category', 'identity', 'meta', 'plot', 'ratings', 'progress', 'poster', 'stinger'],
+    hero: ['backdrop', 'clock', 'category', 'identity', 'meta', 'ratings', 'progress', 'stinger'],
+    lowerthird: ['backdrop', 'clock', 'category', 'identity', 'meta', 'ratings', 'progress', 'stinger'],
     bigclock: ['backdrop', 'clock', 'identity', 'progress'],
-    street: ['clock', 'identity', 'meta', 'plot', 'ratings', 'progress', 'poster'],
+    street: ['clock', 'category', 'identity', 'meta', 'plot', 'ratings', 'progress',
+      'streetframe', 'poster', 'nowplaying', 'stinger'],
     fanart: [],
   };
   const BLOCK_LABEL = { backdrop: 'Backdrop', clock: 'Clock', weather: 'Weather',
-    identity: 'Title', meta: 'Metadata', plot: 'Plot', ratings: 'Ratings',
-    progress: 'Progress', poster: 'Poster', stinger: 'Credits badge' };
-  // Chip order fixed per the design handoff. Stinger rides last, unremovable:
-  // it's a content-driven badge, not something adding would ever show.
-  const CHIP_ORDER = ['backdrop', 'clock', 'weather', 'identity', 'meta', 'plot',
-    'ratings', 'progress', 'poster'];
-  const TOGGLEABLE = ['backdrop', 'clock', 'weather', 'identity', 'meta', 'plot',
-    'ratings', 'progress', 'poster'];
+    category: 'Category', identity: 'Title', meta: 'Metadata', plot: 'Plot', ratings: 'Ratings',
+    progress: 'Progress', poster: 'Poster', streetframe: 'Poster lights',
+    nowplaying: 'Now Playing sign', viewer: 'Viewer', device: 'Device',
+    stream: 'Stream', activity: 'Active streams', tracks: 'Audio & subtitles',
+    stinger: 'Credits badge' };
+  // Chip order is the stable Design toolbar order. Credits remains last, but
+  // is now removable and addable wherever Metadata is present.
+  const CHIP_ORDER = ['backdrop', 'clock', 'weather', 'category', 'identity', 'meta', 'plot',
+    'ratings', 'progress', 'streetframe', 'poster', 'nowplaying',
+    'viewer', 'device', 'stream', 'activity',
+    'tracks', 'stinger'];
+  const TOGGLEABLE = ['backdrop', 'clock', 'weather', 'category', 'identity', 'meta', 'plot',
+    'ratings', 'progress', 'streetframe', 'poster', 'nowplaying',
+    'viewer', 'device', 'stream', 'activity',
+    'tracks', 'stinger'];
   // Street's scene IS its backdrop; Fanart's rotating art is too.
   const UNADDABLE = { street: ['backdrop'], fanart: ['backdrop'] };
+  const STREET_ONLY = ['streetframe', 'nowplaying'];
   // Which blocks carry text (get the font select) / take a color at all.
-  const TEXT_BLOCKS = ['clock', 'weather', 'identity', 'meta', 'plot', 'ratings', 'stinger'];
-  const COLORABLE = ['clock', 'weather', 'identity', 'meta', 'plot', 'ratings',
-    'progress', 'poster', 'stinger'];
+  const TEXT_BLOCKS = ['clock', 'weather', 'category', 'identity', 'meta', 'plot', 'ratings',
+    'viewer', 'device', 'stream', 'activity', 'tracks', 'stinger'];
+  const COLORABLE = ['clock', 'weather', 'category', 'identity', 'meta', 'plot', 'ratings',
+    'progress', 'poster', 'streetframe', 'nowplaying', 'viewer', 'device', 'stream',
+    'activity', 'tracks', 'stinger'];
   // Candidate spots for a freshly-added block, cycled by how many are
   // already on the template. Aligned to the editor's 2.5% grid so a fresh
   // add already sits on a line instead of needing an immediate Snap.
@@ -713,6 +867,10 @@
     { x: 5, y: 70, width: 30 }, { x: 65, y: 70, width: 30 },
     { x: 35, y: 37.5, width: 30 },
   ];
+  const SESSION_BLOCKS = ['viewer', 'device', 'stream', 'activity', 'tracks'];
+  const DISPLAY_PRESETS = new Set([
+    '800x480', '1024x600', '1280x800', '1280x720', '1920x1080', '800x600'
+  ]);
 
   let selectedBlock = 'identity';
   // Truth accounting: what the card ACTUALLY rendered last frame (a block can
@@ -784,7 +942,6 @@
       return chip;
     };
     onCard.forEach(name => strip.appendChild(buildChip(name, true)));
-    strip.appendChild(buildChip('stinger', false));
     refreshChipTruth();
     const add = document.createElement('span');
     add.className = 'chip add';
@@ -811,6 +968,8 @@
     if (tray.hidden) return;
     const shown = visibleBlockSet(cfg.template);
     const missing = TOGGLEABLE.filter(n => !shown.has(n)
+      && !(n === 'stinger' && !shown.has('meta'))
+      && !(STREET_ONLY.includes(n) && cfg.template !== 'street')
       && !(UNADDABLE[cfg.template] || []).includes(n));
     tray.innerHTML = '';
     if (!missing.length) {
@@ -842,7 +1001,8 @@
     cfg.blockVisibility[tpl] ||= {};
     cfg.blockVisibility[tpl][name] = true;
     cfg.blockLayout[tpl] ||= {};
-    if (name !== 'backdrop' && !cfg.blockLayout[tpl][name]) {
+    const native = new Set(TEMPLATE_DEFAULT_BLOCKS[tpl] || []);
+    if (name !== 'backdrop' && !native.has(name) && !cfg.blockLayout[tpl][name]) {
       cfg.blockLayout[tpl][name] = { ...OPEN_SLOTS[usedCount % OPEN_SLOTS.length] };
     }
     // Weather is the one toggleable block whose data-fetch defaults off —
@@ -878,10 +1038,65 @@
       !(TOGGLEABLE.includes(selectedBlock) && visibleBlockSet(cfg.template).has(selectedBlock));
   }
 
-  function scaleFrame() {
-    const box = $('.frame-box');
-    $('#frame').style.transform = `scale(${box.clientWidth / 1280})`;
+  const clampDisplay = (value, low, high, fallback) => {
+    const n = Math.round(Number(value));
+    return Number.isFinite(n) ? Math.max(low, Math.min(high, n)) : fallback;
+  };
+  function targetDisplay() {
+    return {
+      width: clampDisplay(cfg.displayWidth, 320, 3840, 800),
+      height: clampDisplay(cfg.displayHeight, 240, 2160, 480),
+    };
   }
+  function ratioLabel(width, height) {
+    let a = width, b = height;
+    while (b) [a, b] = [b, a % b];
+    return `${width / a}:${height / a}`;
+  }
+  function scaleFrame() {
+    const box = $('.frame-box'), frame = $('#frame');
+    const { width, height } = targetDisplay();
+    box.style.aspectRatio = `${width} / ${height}`;
+    frame.style.width = `${width}px`;
+    frame.style.height = `${height}px`;
+    frame.style.transform = `scale(${box.clientWidth / width})`;
+    $('#display-size-note').textContent =
+      `Previewing ${width} × ${height} · ${ratioLabel(width, height)}`;
+  }
+  function syncDisplayControls() {
+    const { width, height } = targetDisplay();
+    cfg.displayWidth = width; cfg.displayHeight = height;
+    const key = `${width}x${height}`;
+    $('#display-preset').value = DISPLAY_PRESETS.has(key) ? key : 'custom';
+    $('#display-custom').hidden = $('#display-preset').value !== 'custom';
+    $('#display-width').value = width;
+    $('#display-height').value = height;
+    scaleFrame();
+  }
+  $('#display-preset').addEventListener('change', () => {
+    const value = $('#display-preset').value;
+    if (value === 'custom') {
+      $('#display-custom').hidden = false;
+      const { width, height } = targetDisplay();
+      $('#display-width').value = width; $('#display-height').value = height;
+      scaleFrame();
+      $('#status').textContent = 'Enter a custom target display size.';
+      return;
+    }
+    if (DISPLAY_PRESETS.has(value)) {
+      const [width, height] = value.split('x').map(Number);
+      cfg.displayWidth = width; cfg.displayHeight = height;
+    }
+    syncDisplayControls(); sendCfg();
+    $('#status').textContent = 'Target display changed — save to keep it.';
+  });
+  ['display-width', 'display-height'].forEach(id =>
+    $('#' + id).addEventListener('input', () => {
+      cfg.displayWidth = clampDisplay($('#display-width').value, 320, 3840, cfg.displayWidth || 800);
+      cfg.displayHeight = clampDisplay($('#display-height').value, 240, 2160, cfg.displayHeight || 480);
+      scaleFrame(); sendCfg();
+      $('#status').textContent = 'Custom display size changed — save to keep it.';
+    }));
   window.addEventListener('resize', scaleFrame);
   new ResizeObserver(scaleFrame).observe(document.querySelector('.mq-side'));
 
@@ -914,7 +1129,7 @@
     // Fanart starts bare — the art layer is the only thing to edit, so land
     // there instead of on a block that isn't on the card.
     if (cfg.template === 'fanart') selectedBlock = 'backdrop';
-    renderChips(); selectBlock(selectedBlock);
+    renderChips(); showEditorFor(selectedBlock); selectBlock(selectedBlock);
     // Clicking through templates also steps the demo film, so the preview
     // shows the reel instead of one movie forever.
     $('#frame').contentWindow?.postMessage({ type: 'marquee-demo-next' }, location.origin);
@@ -961,7 +1176,93 @@
     $('#status').textContent = 'ZIP changed — save to apply.';
   });
   document.querySelectorAll('input[data-k]').forEach(i =>
-    i.addEventListener('change', () => { syncFx(); sendCfg(); }));
+    i.addEventListener('change', () => {
+      syncFx(); syncBackdropControls(); sendCfg();
+    }));
+
+  // ── Persistent custom backdrop ──
+  const BACKDROP_DEFAULTS = {
+    customBackdropFit: 'cover', customBackdropZoom: 100,
+    customBackdropX: 50, customBackdropY: 50, customBackdropOpacity: 35,
+    customBackdropBlur: 0, customBackdropBrightness: 100
+  };
+  function loadBackdropControls() {
+    document.querySelectorAll('[data-backdrop-field]').forEach(input => {
+      const field = input.dataset.backdropField;
+      const value = cfg[field] ?? BACKDROP_DEFAULTS[field];
+      input.value = String(value);
+      const out = document.querySelector(`[data-backdrop-value="${field}"]`);
+      if (out) out.value = value;
+    });
+    syncBackdropControls();
+  }
+  function syncBackdropControls() {
+    const available = cfg.customBackdropAvailable === true;
+    if (!available) {
+      cfg.customBackdropEnabled = false;
+      $('#ck-custom-backdrop').checked = false;
+    }
+    const enabled = available && $('#ck-custom-backdrop').checked;
+    $('#custom-backdrop-state').textContent = available
+      ? 'Image uploaded — use the controls below to crop and position it'
+      : 'No custom image uploaded';
+    $('#upload-backdrop').textContent = available ? 'Replace image' : 'Upload image';
+    $('#remove-backdrop-image').hidden = !available;
+    $('#ck-custom-backdrop').disabled = !available;
+    $('#custom-backdrop-controls').hidden = !enabled;
+  }
+  document.querySelectorAll('[data-backdrop-field]').forEach(input =>
+    input.addEventListener('input', () => {
+      const field = input.dataset.backdropField;
+      cfg[field] = input.type === 'range' ? Number(input.value) : input.value;
+      const out = document.querySelector(`[data-backdrop-value="${field}"]`);
+      if (out) out.value = input.value;
+      sendCfg();
+      $('#status').textContent = 'Custom backdrop adjusted — save to apply.';
+    }));
+  $('#upload-backdrop').addEventListener('click', () => $('#custom-backdrop-file').click());
+  $('#custom-backdrop-file').addEventListener('change', async () => {
+    const file = $('#custom-backdrop-file').files[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      $('#status').textContent = 'Upload failed: the image exceeds 15 MB.';
+      return;
+    }
+    $('#status').textContent = 'Uploading custom backdrop…';
+    try {
+      const response = await fetch('/custom-backdrop', {
+        method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'upload failed');
+      cfg.customBackdropAvailable = true;
+      cfg.customBackdropVersion = result.version || String(Date.now());
+      cfg.customBackdropEnabled = true;
+      $('#ck-custom-backdrop').checked = true;
+      loadBackdropControls(); sendCfg();
+      $('#status').textContent = 'Custom backdrop uploaded — save to keep it enabled.';
+    } catch (error) {
+      $('#status').textContent = 'Upload failed: ' + error.message;
+    } finally {
+      $('#custom-backdrop-file').value = '';
+    }
+  });
+  $('#remove-backdrop-image').addEventListener('click', async () => {
+    if (!confirm('Delete the uploaded custom backdrop?')) return;
+    try {
+      const result = await (await fetch('/custom-backdrop', { method: 'DELETE' })).json();
+      if (!result.ok) throw new Error(result.error || 'delete failed');
+      cfg.customBackdropAvailable = false;
+      cfg.customBackdropVersion = '';
+      cfg.customBackdropEnabled = false;
+      $('#ck-custom-backdrop').checked = false;
+      syncBackdropControls(); sendCfg();
+      $('#status').textContent = 'Custom backdrop deleted — save to apply.';
+    } catch (error) {
+      $('#status').textContent = 'Delete failed: ' + error.message;
+    }
+  });
   // Weather condition preview — forces the card's look for testing, exactly
   // like ?wx=/?day=, and never touches cfg. 'Live' hands back to reality.
   const wxPreview = { wx: '', day: '' };
@@ -1025,8 +1326,13 @@
   function showEditorFor(name) {
     // On Fanart the background IS the feature: tapping it edits the art.
     const faCtx = name === 'backdrop' && cfg.template === 'fanart';
+    const backdropCtx = name === 'backdrop' && cfg.template !== 'fanart';
     $('#ed-title').textContent = 'Editing: ' + (faCtx ? 'Fanart' : (BLOCK_LABEL[name] || name));
     $('#ctx-fanart').hidden = !faCtx;
+    $('#ctx-backdrop').hidden = !backdropCtx;
+    $('#ctx-session-style').hidden = !SESSION_BLOCKS.includes(name);
+    $('#ctx-device').hidden = name !== 'device';
+    $('#ctx-street').hidden = cfg.template !== 'street';
     if (faCtx) $('#fanart-key-note').hidden = !!cfg.fanartKeySet;
     $('#ctx-title').hidden = name !== 'identity';
     $('#ctx-clock').hidden = name !== 'clock';
@@ -1038,6 +1344,7 @@
     $('#block-sliders').hidden = !positionable;
     $('#align').hidden = !positionable;
     $('#snap').hidden = !positionable;
+    if (backdropCtx) syncBackdropControls();
     document.querySelectorAll('#chips .chip').forEach(c => {
       const on = c.dataset.block === name;
       c.classList.toggle('on', on);
@@ -1105,6 +1412,8 @@
     if (x.clockFormat) { cfg.clockFormat = x.clockFormat; segSet('clockfmt', x.clockFormat); }
     if ('clockSeconds' in x) { cfg.clockSeconds = x.clockSeconds; const el = document.getElementById('ck-clocksec'); if (el) el.checked = x.clockSeconds; }
     if ('weatherFX' in x) { cfg.weatherFX = x.weatherFX; const el = document.getElementById('ck-weatherfx'); if (el) el.checked = x.weatherFX; syncFx(); }
+    if ('streetRainAnimation' in x) { cfg.streetRainAnimation = x.streetRainAnimation; $('#ck-street-rain').checked = x.streetRainAnimation; }
+    if ('showDeviceLocation' in x) { cfg.showDeviceLocation = x.showDeviceLocation; $('#ck-device-location').checked = x.showDeviceLocation; }
     if (x.weatherIntensity) { cfg.weatherIntensity = x.weatherIntensity; $('#wxintensity').value = String(x.weatherIntensity); }
     if (x.weatherUnits) { cfg.weatherUnits = x.weatherUnits; segSet('unitfmt', x.weatherUnits); }
     if (x.fanartType) { cfg.fanartType = x.fanartType; $('#fatype').value = x.fanartType; }
@@ -1145,6 +1454,8 @@
       extras: { clockFormat: cfg.clockFormat || '12h',
         clockSeconds: cfg.clockSeconds === true,
         weatherFX: cfg.weatherFX !== false,
+        streetRainAnimation: cfg.streetRainAnimation !== false,
+        showDeviceLocation: cfg.showDeviceLocation !== false,
         weatherIntensity: cfg.weatherIntensity || 2,
         weatherUnits: cfg.weatherUnits || 'f',
         fanartType: cfg.fanartType || 'background',
@@ -1254,7 +1565,7 @@
     { s: '#carousel', t: 'Pick a template',
       b: 'Tap a card to change the whole layout. Your saved presets ride here too — "+ Save preset" backs up the current look.' },
     { s: '.frame-box', t: 'This is your card',
-      b: 'Every change previews instantly. Tap any block on the card to select it — drag to move it.' },
+      b: 'Choose the target display size above it. Every change previews instantly; tap any block to select it and drag to move it.' },
     { s: '#chips', t: 'Blocks on the card',
       b: 'Tap a chip to edit that block, × to take it off the card, and "+ Add" brings anything back.' },
     { s: '#editor', t: 'Make it yours',
@@ -1466,7 +1777,7 @@
     segSet('unitfmt', cfg.weatherUnits || 'f');
     segSet('clockfmt', cfg.clockFormat || '12h');
     cfg.blockLayout ||= {}; cfg.blockVisibility ||= {}; cfg.presets ||= [];
-    syncFx();
+    syncFx(); loadBackdropControls(); syncDisplayControls();
     markTemplates(); renderChips(); renderPresets();
     showEditorFor(selectedBlock);
     loadFrame();
@@ -1516,6 +1827,10 @@
         const out = document.querySelector(`[data-value="${field}"]`);
         if (out) out.value = value;
       });
+      document.querySelectorAll('[data-layout-toggle]').forEach(input => {
+        const value = (msg.values || {})[input.dataset.layoutToggle];
+        input.checked = value !== false;
+      });
       markSwatches((msg.values || {}).color || '');
       // '' = template default: no Justify button lit until one is chosen.
       segSet('align', (msg.values || {}).align || '');
@@ -1533,8 +1848,15 @@
       const out = document.querySelector(`[data-value="${field}"]`);
       if (out) out.value = input.value;
       $('#frame').contentWindow.postMessage({ type: 'marquee-set',
-        field, value: ['font', 'color'].includes(field) ? input.value : Number(input.value) },
+        field, value: ['font', 'color', 'logoFit'].includes(field)
+          ? input.value : Number(input.value) },
         location.origin);
+    }));
+  document.querySelectorAll('[data-layout-toggle]').forEach(input =>
+    input.addEventListener('change', () => {
+      $('#frame').contentWindow.postMessage({ type: 'marquee-set',
+        field: input.dataset.layoutToggle, value: input.checked }, location.origin);
+      $('#status').textContent = 'Panel styling changed — save to apply.';
     }));
   $('#snap').addEventListener('click', () =>
     $('#frame').contentWindow.postMessage({ type: 'marquee-snap' }, location.origin));
